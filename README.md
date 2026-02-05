@@ -17,7 +17,7 @@ npm run dev
 - Toggle K-A wrap to allow Ace/King adjacency.
 - **Undo** rewinds moves, draws, hold actions, powerup uses, and rule toggles.
 - Select a powerup button, then click an exposed card to use it.
-- Use the **Seed** field to replay a deterministic deal.
+- Deals randomize by default; enter a **Seed** (or toggle **Lock seed**) to replay/share a deterministic deal.
 
 ## Powerups
 

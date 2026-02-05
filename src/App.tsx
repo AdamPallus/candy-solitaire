@@ -22,11 +22,11 @@ type ClearResult = {
   clearedCount: number
 }
 
-const DEFAULT_SEED = 'candy'
-
 export default function App() {
-  const [seedInput, setSeedInput] = useState(DEFAULT_SEED)
-  const [game, setGame] = useState(() => createGameState(DEFAULT_SEED))
+  const initialSeed = useMemo(() => generateRandomSeed(), [])
+  const [seedInput, setSeedInput] = useState(initialSeed)
+  const [seedLocked, setSeedLocked] = useState(false)
+  const [game, setGame] = useState(() => createGameState(initialSeed))
   const [history, setHistory] = useState<GameState[]>([])
 
   const exposedIds = useMemo(() => getExposedIds(game.tableau), [game.tableau])
@@ -50,9 +50,15 @@ export default function App() {
   }
 
   function startNewGame() {
-    const seed = seedInput.trim() || DEFAULT_SEED
+    const trimmed = seedInput.trim()
+    const useSeed = seedLocked && trimmed.length > 0
+    const seed = useSeed ? trimmed : generateRandomSeed()
     setHistory([])
     setGame(createGameState(seed))
+    if (!useSeed) {
+      setSeedLocked(false)
+      setSeedInput(seed)
+    }
   }
 
   function togglePowerup(powerup: Powerup) {
@@ -223,9 +229,21 @@ export default function App() {
             Seed
             <input
               value={seedInput}
-              onChange={(event) => setSeedInput(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value
+                setSeedInput(next)
+                setSeedLocked(next.trim().length > 0)
+              }}
               placeholder="sweet-seed"
             />
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={seedLocked}
+              onChange={(event) => setSeedLocked(event.target.checked)}
+            />
+            <span>Lock seed</span>
           </label>
           <button className="btn primary" onClick={startNewGame}>
             Deal New Game
@@ -523,6 +541,21 @@ function MiniCard({
       )}
     </div>
   )
+}
+
+function generateRandomSeed(): string {
+  const maybeCrypto =
+    typeof globalThis !== 'undefined' ? (globalThis.crypto as Crypto | undefined) : undefined
+
+  if (maybeCrypto?.randomUUID) return maybeCrypto.randomUUID()
+
+  if (maybeCrypto?.getRandomValues) {
+    const bytes = new Uint8Array(16)
+    maybeCrypto.getRandomValues(bytes)
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function isCardPlayable(
