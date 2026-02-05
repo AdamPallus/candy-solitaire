@@ -15,6 +15,27 @@ This report focuses on quick, high-impact improvements that make the game feel �
 - Responsive behavior + sizing in `src/index.css`
 - Seed / deal determinism in `src/game.ts` and `src/App.tsx`
 
+## Concrete code findings (so you can action quickly)
+
+### `src/index.css`
+
+- Board/card sizing is driven by fixed CSS variables:
+  - `--card-w: 72px`, `--card-h: 96px`, `--slot-x: 36px`, `--slot-y: 46px` (root variables).
+- The tableau is positioned absolutely inside `.board` with a fixed computed width/height:
+  - `.board { width: calc(var(--board-cols) * var(--slot-x) + var(--card-w)); min-height: ... }`
+  - Each `.card` uses `left/top` with `calc(slot * var(--slot-x/y))`.
+- On smaller breakpoints the board is scaled down with transforms (which also scales down hit targets):
+  - `@media (max-width: 980px) { .board { transform: scale(0.9) } }`
+  - `@media (max-width: 640px) { .board { transform: scale(0.8) } }`
+- Desktop hover affordances exist, but there’s no touch-first pressed state:
+  - `.card.playable:hover { ... }`, `.btn:hover { ... }`
+
+### `src/App.tsx`
+
+- Cards are rendered as `<button className="card" ... disabled={!playable}>`.
+  - This prevents tapping “unplayable” cards to get feedback (“why can’t I play this?”) because the click never fires when disabled.
+- Layout is a large “board + side-panel” design. On mobile, `side-panel` becomes a row of panels that still take significant vertical space after the board.
+
 ## Key mobile issues and recommendations (prioritized)
 
 ### 1) Tap targets are likely too small on phones
@@ -25,7 +46,11 @@ This report focuses on quick, high-impact improvements that make the game feel �
 
 **Recommendation**
 - Prefer responsive sizing by adjusting CSS variables instead of transform scaling:
-  - Compute `--card-w`, `--card-h`, `--slot-x`, `--slot-y` using `clamp(...)` based on viewport width/height.
+  - Replace the transform approach with viewport-aware variables (example approach):
+    - `--card-w: clamp(56px, 14vw, 72px)`
+    - `--card-h: calc(var(--card-w) * 1.33)`
+    - `--slot-x: calc(var(--card-w) * 0.5)`
+    - `--slot-y: calc(var(--card-h) * 0.48)`
   - Keep a minimum tap target goal (roughly 44×44 CSS px) for frequent actions (cards, powerups, draw/hold).
 - If the board can’t fit comfortably, choose a deliberate strategy:
   - Horizontal pan (overflow-x) on the board container, or
@@ -56,6 +81,18 @@ This report focuses on quick, high-impact improvements that make the game feel �
   - `-webkit-tap-highlight-color: transparent;` for cleaner taps (optional).
   - Use `:active` styles for immediate tactile feedback (pressed state), not only `:hover`.
 - Add haptics/audio hooks (even simple) for: valid play, invalid tap, combo threshold, powerup earned, win/loss.
+
+### 4) Don’t disable taps on “unplayable” cards (use feedback instead)
+
+**Finding**
+- `disabled={!playable}` on each tableau card button blocks interaction entirely, so players can’t “probe” the board.
+
+**Recommendation**
+- Keep cards tappable when exposed, and provide a lightweight “invalid” response:
+  - Visual: quick shake/tilt or pulse outline on the waste card.
+  - Haptic: short light tap (on supported devices).
+  - Audio: subtle “tick” (optional).
+- For accessibility, prefer `aria-disabled={!playable}` (and style it) while still handling clicks.
 
 ### 4) Thumb reach: move critical buttons out of the top area
 
@@ -110,4 +147,4 @@ See `src/App.tsx`.
 1) Replace board transform scaling with responsive CSS variables (biggest mobile win).
 2) Convert side panels into collapsible sections or a bottom sheet on small screens.
 3) Add touch-first CSS + pressed states + optional haptics.
-
+4) Make unplayable-card taps give feedback (avoid `disabled` blocking taps).
