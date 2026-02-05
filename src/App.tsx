@@ -38,10 +38,11 @@ export default function App() {
   const wasteTop = game.waste[game.waste.length - 1]
 
   const comboMultiplier = useMemo(() => getComboMultiplier(game.combo), [game.combo])
-  const boardCols = useMemo(
-    () => Math.max(...LAYOUT.map((slot) => slot.x)) + 1,
-    [],
-  )
+  const boardMinX = useMemo(() => Math.min(...LAYOUT.map((slot) => slot.x)), [])
+  const boardCols = useMemo(() => {
+    const maxX = Math.max(...LAYOUT.map((slot) => slot.x))
+    return maxX - boardMinX + 1
+  }, [boardMinX])
   const canUndo = history.length > 0
   const canHold = game.status === 'playing' && game.waste.length > 0
   const [showCovered, setShowCovered] = useState(false)
@@ -366,7 +367,7 @@ export default function App() {
                     invalid ? 'invalid' : ''
                   }`}
                   style={{
-                    left: `calc(${slot.x} * var(--slot-x))`,
+                    left: `calc(${slot.x - boardMinX} * var(--slot-x))`,
                     top: `calc(${slot.row} * var(--slot-y))`,
                   }}
                   onClick={() => {
