@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ADJACENCY,
   BASE_POINTS,
@@ -28,6 +28,10 @@ export default function App() {
   const [seedLocked, setSeedLocked] = useState(false)
   const [game, setGame] = useState(() => createGameState(initialSeed))
   const [history, setHistory] = useState<GameState[]>([])
+  const [invalidCardId, setInvalidCardId] = useState<number | null>(null)
+  const [invalidToken, setInvalidToken] = useState(0)
+  const invalidTimeout = useRef<number | null>(null)
+  const isNarrow = useMediaQuery('(max-width: 980px)')
 
   const exposedIds = useMemo(() => getExposedIds(game.tableau), [game.tableau])
   const exposedSet = useMemo(() => new Set(exposedIds), [exposedIds])
@@ -42,6 +46,14 @@ export default function App() {
   const canHold = game.status === 'playing' && game.waste.length > 0
   const [showCovered, setShowCovered] = useState(false)
   const [highlightPlayable, setHighlightPlayable] = useState(true)
+
+  function triggerInvalid(slotId: number) {
+    if (invalidTimeout.current) window.clearTimeout(invalidTimeout.current)
+    setInvalidCardId(slotId)
+    setInvalidToken((token) => token + 1)
+    if ('vibrate' in navigator) navigator.vibrate(10)
+    invalidTimeout.current = window.setTimeout(() => setInvalidCardId(null), 320)
+  }
 
   function commitState(prev: GameState, next: GameState): GameState {
     if (next === prev) return prev
@@ -343,19 +355,30 @@ export default function App() {
               const symbol = suitSymbol(card.suit)
               const isRed = isRedSuit(card.suit)
               const faceUp = exposed || showCovered
+              const invalid = invalidCardId === slot.id
+              const cardKey = `${slot.id}-${invalid ? invalidToken : 0}`
               return (
                 <button
-                  key={slot.id}
+                  key={cardKey}
                   className={`card ${exposed ? 'exposed' : 'blocked'} ${
                     exposed && highlightPlayable ? (playable ? 'playable' : 'unplayable') : ''
-                  } ${faceUp ? (isRed ? 'red' : 'black') : 'face-down'}`}
+                  } ${faceUp ? (isRed ? 'red' : 'black') : 'face-down'} ${
+                    invalid ? 'invalid' : ''
+                  }`}
                   style={{
                     left: `calc(${slot.x} * var(--slot-x))`,
                     top: `calc(${slot.row} * var(--slot-y))`,
                   }}
-                  onClick={() => handleCardClick(slot.id)}
+                  onClick={() => {
+                    if (!playable) {
+                      triggerInvalid(slot.id)
+                      return
+                    }
+                    handleCardClick(slot.id)
+                  }}
                   type="button"
-                  disabled={!playable}
+                  disabled={!faceUp}
+                  aria-disabled={!playable}
                   aria-label={faceUp ? `${rankLabel(card.rank)}${symbol}` : 'face down card'}
                 >
                   {faceUp ? (
@@ -394,85 +417,87 @@ export default function App() {
         </section>
 
         <aside className="side-panel">
-          <section className="panel">
-            <h3>Powerups</h3>
-            <p className="panel-text">
-              Build combos without drawing to unlock candy powerups. Select a powerup, then click an
-              exposed card to use it.
-            </p>
-            <div className="powerups">
-              {renderPowerup(
-                'wild',
-                game.powerups.wild,
-                game.activePowerup,
-                togglePowerup,
-              )}
-              {renderPowerup(
-                'bomb',
-                game.powerups.bomb,
-                game.activePowerup,
-                togglePowerup,
-              )}
-              {renderPowerup(
-                'rainbow',
-                game.powerups.rainbow,
-                game.activePowerup,
-                togglePowerup,
-              )}
+          <CollapsiblePanel title="Powerups" defaultOpen>
+            <div className="panel-body">
+              <p className="panel-text">
+                Build combos without drawing to unlock candy powerups. Select a powerup, then click
+                an exposed card to use it.
+              </p>
+              <div className="powerups">
+                {renderPowerup(
+                  'wild',
+                  game.powerups.wild,
+                  game.activePowerup,
+                  togglePowerup,
+                )}
+                {renderPowerup(
+                  'bomb',
+                  game.powerups.bomb,
+                  game.activePowerup,
+                  togglePowerup,
+                )}
+                {renderPowerup(
+                  'rainbow',
+                  game.powerups.rainbow,
+                  game.activePowerup,
+                  togglePowerup,
+                )}
+              </div>
             </div>
-          </section>
+          </CollapsiblePanel>
 
-          <section className="panel">
-            <h3>How to Play</h3>
-            <ul>
-              <li>
-                Click an exposed tableau card if it is one rank above or below the waste (K-A
-                wrap is optional).
-              </li>
-              <li>
-                Drawing from stock or using Hold resets your combo. Chain clears to increase your
-                multiplier.
-              </li>
-              <li>
-                Hold stores the current waste card or swaps it back onto the waste stack.
-              </li>
-              <li>Undo rewinds moves, draws, hold swaps, powerup uses, and rule toggles.</li>
-              <li>Every 3 consecutive clears earns the next powerup in the cycle:</li>
-            </ul>
-            <ol>
-              <li>Wild: play any exposed card.</li>
-              <li>Bomb: clear the selected card plus exposed neighbors.</li>
-              <li>Rainbow: click a card to pick its rank and clear all exposed cards of that rank.</li>
-            </ol>
-            <p>Clear every tableau card to win. Unused stock adds a bonus.</p>
-          </section>
+          <CollapsiblePanel title="How to Play" defaultOpen={!isNarrow}>
+            <div className="panel-body">
+              <ul>
+                <li>
+                  Click an exposed tableau card if it is one rank above or below the waste (K-A
+                  wrap is optional).
+                </li>
+                <li>
+                  Drawing from stock or using Hold resets your combo. Chain clears to increase your
+                  multiplier.
+                </li>
+                <li>Hold stores the current waste card or swaps it back onto the waste stack.</li>
+                <li>Undo rewinds moves, draws, hold swaps, powerup uses, and rule toggles.</li>
+                <li>Every 3 consecutive clears earns the next powerup in the cycle:</li>
+              </ul>
+              <ol>
+                <li>Wild: play any exposed card.</li>
+                <li>Bomb: clear the selected card plus exposed neighbors.</li>
+                <li>Rainbow: click a card to pick its rank and clear all exposed cards of that rank.</li>
+              </ol>
+              <p>Clear every tableau card to win. Unused stock adds a bonus.</p>
+            </div>
+          </CollapsiblePanel>
 
-          <section className="panel">
-            <h3>Difficulty</h3>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showCovered}
-                onChange={(e) => setShowCovered(e.target.checked)}
-              />
-              <span>Show covered cards</span>
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={highlightPlayable}
-                onChange={(e) => setHighlightPlayable(e.target.checked)}
-              />
-              <span>Highlight playable cards</span>
-            </label>
-          </section>
+          <CollapsiblePanel title="Difficulty" defaultOpen={!isNarrow}>
+            <div className="panel-body">
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={showCovered}
+                  onChange={(e) => setShowCovered(e.target.checked)}
+                />
+                <span>Show covered cards</span>
+              </label>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  checked={highlightPlayable}
+                  onChange={(e) => setHighlightPlayable(e.target.checked)}
+                />
+                <span>Highlight playable cards</span>
+              </label>
+            </div>
+          </CollapsiblePanel>
 
-          <section className="panel">
-            <h3>Deal Details</h3>
-            <p className="panel-text">Seed: {game.seed}</p>
-            <p className="panel-text">K-A wrap: {game.wrapEnabled ? 'On' : 'Off'}</p>
-            <p className="panel-text">Powerup cycle: {POWERUP_ORDER.join(' -> ')}</p>
-          </section>
+          <CollapsiblePanel title="Deal Details" defaultOpen={!isNarrow}>
+            <div className="panel-body">
+              <p className="panel-text">Seed: {game.seed}</p>
+              <p className="panel-text">K-A wrap: {game.wrapEnabled ? 'On' : 'Off'}</p>
+              <p className="panel-text">Powerup cycle: {POWERUP_ORDER.join(' -> ')}</p>
+            </div>
+          </CollapsiblePanel>
         </aside>
       </main>
     </div>
@@ -556,6 +581,47 @@ function generateRandomSeed(): string {
   }
 
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.matchMedia(query).matches
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const mediaQuery = window.matchMedia(query)
+    const onChange = () => setMatches(mediaQuery.matches)
+
+    onChange()
+    mediaQuery.addEventListener('change', onChange)
+    return () => mediaQuery.removeEventListener('change', onChange)
+  }, [query])
+
+  return matches
+}
+
+function CollapsiblePanel({
+  title,
+  defaultOpen,
+  children,
+}: {
+  title: string
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(() => Boolean(defaultOpen))
+  return (
+    <details
+      className="panel"
+      open={open}
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary>{title}</summary>
+      {children}
+    </details>
+  )
 }
 
 function isCardPlayable(
